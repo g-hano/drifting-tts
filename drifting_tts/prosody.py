@@ -7,7 +7,7 @@ Measurements (``drifting-tts prosody`` runs them on held-out recordings and the 
   and micro-variation (mean ``|F0 - 5-frame moving average|``), with the definitions of the Prosody-40 diagnosis
   (docs/EXPERIMENTS.md §5) so the numbers stay comparable; voiced %, level std, internal pauses (energy based) and the
   speaking rate (syllables per second of speech, :func:`syllables`: in Turkish every vowel is one syllable, in
-  English every vowel group but a silent final ``e``);
+  English every vowel group but a silent final ``e``, in Swedish every vowel group);
 * **paired** (:func:`paired_metrics`): against a recording of the same text, dynamic time warping on MFCCs, then the
   log-F0 correlation and RMSE along the path, and the ratio of the speech durations;
 * **token level, no audio** (:func:`token_targets`, :func:`token_report`): the duration and pitch predictors against
@@ -46,10 +46,16 @@ VOICED_LETTERS = VOWELS | frozenset("bcdgğjlmnrvyzw")
 # tokens with voiced frames in < 80% of the training targets (studio voice, dio F0): docs/PROSODY.md
 UNVOICED_PRONE = frozenset("çpst.!?")
 # per language: the voiced letters and the unvoiced-prone tokens. The English sets are the Turkish ones carried over
-# by letter class (voiced consonants; the stops and sibilant of ç p s t), not measured on English targets.
-_VOICED = {"tr": VOICED_LETTERS, "en": frozenset("aeiouy") | frozenset("bdgjlmnrvwz")}
-_UNVOICED_PRONE = {"tr": UNVOICED_PRONE, "en": frozenset("pst.!?")}
+# by letter class (voiced consonants; the stops and sibilant of ç p s t), not measured on English targets.  Swedish
+# symbols are IPA phones: vowels (including length and stress marks, which belong to the vowel) and voiced consonants;
+# the voiceless stops, fricatives, retroflexes and sentence punctuation are prone.
+_SV_VOICED = frozenset("aeiouyæøœåɑɒɔɐəɛɜɪɵʉʊʌʏɤɨɯɞɶ"
+                       "bdɡgjlmnrvwzðŋɹʒɽɻɾɱɲɳɭʎɫʐʑʝɣɦˈˌːˑʲʷ")
+_SV_UNVOICED_PRONE = frozenset("ptkcfhɕʂʃçʈcqxs.!?")
+_VOICED = {"tr": VOICED_LETTERS, "en": frozenset("aeiouy") | frozenset("bdgjlmnrvwz"), "sv": _SV_VOICED}
+_UNVOICED_PRONE = {"tr": UNVOICED_PRONE, "en": frozenset("pst.!?"), "sv": _SV_UNVOICED_PRONE}
 _EN_VOWEL_GROUP = re.compile(r"[aeiouy]+")
+_SV_VOWEL_GROUP = re.compile(r"[aeiouyåäöé]+")
 PUNCTUATION = ".,!?"
 ST_PER_LN = 12 / math.log(2)  # semitones per natural-log unit
 
@@ -116,16 +122,20 @@ def pauses(silent: np.ndarray, min_frames: int) -> tuple[list[tuple[int, int]], 
 
 def syllables(text: str, language: str | None = "tr") -> int:
     """Syllables of normalised text. Turkish: one per vowel. English (an estimate from the spelling): one per vowel
-    group of a word, less a silent final ``e`` (``make``, ``these``; not ``table``, ``the``), at least one per word."""
+    group of a word, less a silent final ``e`` (``make``, ``these``; not ``table``, ``the``), at least one per word.
+    Swedish (also an estimate): one per vowel group (``a e i o u y å ä ö``), at least one per word; the tonic accent
+    does not add a syllable."""
     if language in (None, "tr"):
         return sum(c in VOWELS for c in text)
-    if language != "en":
+    if language not in ("en", "sv"):
         raise ValueError(f"no syllable count for language {language!r}")
     total = 0
-    for word in re.findall(r"[a-z']+", text.lower()):
+    pattern = _SV_VOWEL_GROUP if language == "sv" else _EN_VOWEL_GROUP
+    words = re.findall(r"[a-zåäöé']+", text.lower()) if language == "sv" else re.findall(r"[a-z']+", text.lower())
+    for word in words:
         word = word.replace("'", "")
-        n = len(_EN_VOWEL_GROUP.findall(word))
-        if n > 1 and word.endswith("e") and not word.endswith("le") and word[-2] not in "aeiouy":
+        n = len(pattern.findall(word))
+        if language == "en" and n > 1 and word.endswith("e") and not word.endswith("le") and word[-2] not in "aeiouy":
             n -= 1
         total += max(n, 1) if word else 0
     return total

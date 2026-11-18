@@ -1,0 +1,19 @@
+# ARDrift in Swedish (docs/SWEDISH.md): the English recipe with the phoneme frontend (drifting_tts/text_sv.py).
+# `prepare` only normalises (it stores orthographic `norm_text`), but training, synthesis and evaluation phonemise the
+# text with phonemizer + espeak-ng, so install both on the training/inference machine:
+#   pip install -e '.[sv]' && brew install espeak-ng   # or: sudo apt install espeak-ng
+# The text encoder's vocabulary is the IPA symbol table of drifting_tts.text_sv, not letters.
+base: ar_tts.yaml
+
+data:
+  root: data/sv_pilot
+
+model:
+  text:
+    language: sv
+    d: 256
+    heads: 4
+    ffn: 1024
+
+train:
+  steps: 30000

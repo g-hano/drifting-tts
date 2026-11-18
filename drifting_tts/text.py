@@ -1,5 +1,5 @@
 """Turkish text frontend: normalisation and a character vocabulary; :func:`frontend` gives a language's frontend
-(``tr``: this module, ``en``: :mod:`drifting_tts.text_en`).
+(``tr``: this module, ``en``: :mod:`drifting_tts.text_en`, ``sv``: :mod:`drifting_tts.text_sv`).
 
 Turkish orthography is close to phonemic, so characters are used directly as input symbols
 (no G2P). Normalisation lower-cases with Turkish rules, verbalises numbers, clock times, ordinals, fractions, phone
@@ -381,13 +381,13 @@ def split_sentences(text: str, max_chars: int = 180) -> list[str]:
     return out
 
 
-LANGUAGES = ("tr", "en")
+LANGUAGES = ("tr", "en", "sv")
 
 
 def frontend(language: str | None = "tr"):
     """The text frontend of ``language`` (a model's ``model.text.language``, a dataset's ``stats.json``; default
     Turkish): a module with ``SYMBOLS``, ``normalize`` and ``text_to_ids``. ``PAD_ID``, ``BLANK_ID`` and the sentence
-    helpers are the same for every language."""
+    helpers are the same for every language.  Turkish and English use character symbols; Swedish uses IPA phonemes."""
     if language in (None, "tr"):
         import sys
 
@@ -396,4 +396,8 @@ def frontend(language: str | None = "tr"):
         from . import text_en
 
         return text_en
+    if language == "sv":
+        from . import text_sv
+
+        return text_sv
     raise ValueError(f"unknown language {language!r}; choose one of {', '.join(LANGUAGES)}")

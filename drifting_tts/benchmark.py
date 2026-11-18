@@ -32,7 +32,7 @@ from .voices import DEFAULT_VOICE, VOICES
 
 FREYA = "freyavoice/freya-tr-eval"
 DEFAULT_TEXTS = {"tr": FREYA}  # per language of the checkpoint
-WARMUP = {"tr": "Merhaba.", "en": "Hello."}
+WARMUP = {"tr": "Merhaba.", "en": "Hello.", "sv": "Hej."}
 
 
 def add_args(p: argparse.ArgumentParser) -> None:

@@ -459,22 +459,27 @@ class Synthesizer:
         """Token ids of the end of ``previous`` (whole words, so that both fit in :data:`CONTEXT_CHARS`), a space and
         ``sentence``, and the number of leading context tokens (``0``: no context)."""
         to_ids = frontend(language).text_to_ids
-        room = CONTEXT_CHARS - len(sentence) - 1
+        chars = getattr(frontend(language), "CONTEXT_CHARS", CONTEXT_CHARS)
+        room = chars - len(sentence) - 1
         ctx = (previous or "")[-room:] if room > 0 else ""
         if previous and len(ctx) < len(previous):  # cut at a word boundary
             ctx = ctx.partition(" ")[2]
         if not ctx.strip():
             return to_ids(sentence, normalized=True), 0
-        return to_ids(f"{ctx} {sentence}", normalized=True), 2 * len(ctx) + 2
+        ids = to_ids(f"{ctx} {sentence}", normalized=True)
+        # The context boundary in tokens, not characters: a phoneme frontend (Swedish) has more tokens than letters.
+        return ids, len(ids) - len(to_ids(sentence, normalized=True))
 
     def units(self, text: str, paragraph: bool | int | None = None) -> list[str]:
         """The normalised pieces of ``text`` that are synthesised in one pass each: its sentences, or with
         ``paragraph`` (default: the Synthesizer's) groups of consecutive sentences (:func:`group_sentences`)."""
-        sentences = split_sentences(self.text.normalize(text))
+        sentences = split_sentences(self.text.normalize(text),
+                                    getattr(self.text, "PARAGRAPH_CHARS", PARAGRAPH_CHARS))
         paragraph = self.paragraph if paragraph is None else paragraph
         if not paragraph:
             return sentences
-        return group_sentences(sentences, PARAGRAPH_CHARS if paragraph is True else int(paragraph))
+        return group_sentences(sentences, getattr(self.text, "PARAGRAPH_CHARS", PARAGRAPH_CHARS)
+                               if paragraph is True else int(paragraph))
 
     def _units(self, text: str, paragraph: bool | int | None, context: bool | None) -> Iterator[tuple[str, str | None]]:
         """:meth:`units` with the unit before each one when ``context`` (default: the Synthesizer's) is on."""

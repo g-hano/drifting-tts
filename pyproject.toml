@@ -34,6 +34,9 @@ dev = ["pytest", "ruff"]
 eval = ["faster-whisper", "transformers", "safetensors",
         "utmosv2 @ git+https://github.com/sarulab-speech/UTMOSv2.git@v1.3.0"]
 bigvgan = ["librosa", "scipy", "matplotlib", "nnAudio"]   # BigVGAN-v2 backend (its code imports these; nnAudio: CQT-D)
+# Swedish frontend (`language: sv`, docs/SWEDISH.md): phonemizer over the espeak-ng system library (`brew install
+# espeak-ng` / `apt install espeak-ng`); without it the other frontends and text normalisation still work
+sv = ["phonemizer>=3.2"]
 # data scoring (`drifting-tts score`): Whisper large-v3, DNSMOS (Microsoft's ONNX models run in torch), ECAPA
 score = ["faster-whisper>=1.1", "rapidfuzz", "speechmos", "onnx", "onnx2torch", "librosa", "speechbrain>=1.0"]
 # the judge panel (scripts/judge_panel.py) beside the eval judges: SCOREQ, Audiobox Aesthetics, NISQA (torchmetrics),
