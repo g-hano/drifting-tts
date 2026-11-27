@@ -245,10 +245,10 @@ def run(args) -> None:
         e.pop("held_out", None)
         e["spk_id"] = speakers[e["speaker"]]
         e["split"] = "val" if i in val else "dev" if i in dev else "train"
-    with open(out / "index.jsonl", "w") as f:
+    with open(out / "index.jsonl", "w", encoding="utf-8") as f:
         for e in index:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    (out / "speakers.json").write_text(json.dumps(speakers, ensure_ascii=False, indent=0))
+    (out / "speakers.json").write_text(json.dumps(speakers, ensure_ascii=False, indent=0), encoding="utf-8")
 
     mean_bin = s / offset
     std_bin = np.sqrt(np.maximum(ss / offset - mean_bin**2, 1e-8))
@@ -268,6 +268,6 @@ def run(args) -> None:
         lf0_mean = lf0_sum / max(lf0_n, 1)
         lf0_std = float(np.sqrt(max(lf0_sq / max(lf0_n, 1) - lf0_mean**2, 1e-8)))
         stats.update(f0_method=args.f0_method, lf0_mean=lf0_mean, lf0_std=lf0_std, voiced_frames=lf0_n)
-    (out / "stats.json").write_text(json.dumps(stats, indent=1))
+    (out / "stats.json").write_text(json.dumps(stats, indent=1), encoding="utf-8")
     print(f"wrote {len(index)} utterances ({offset / 93.75 / 3600:.1f} h), {len(speakers)} speakers, "
           f"{errors} decode errors, {skipped} empty transcripts -> {out}")

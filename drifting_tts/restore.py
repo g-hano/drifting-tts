@@ -75,6 +75,10 @@ def add_args(p: argparse.ArgumentParser) -> None:
                    help="rate of the written FLAC (Sidon's 48 kHz resampled; prepare works at 24 kHz)")
     p.add_argument("--limit", type=int, default=0, help="first N rows per shard only (0: all; a pilot)")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--workers", type=int, default=1,
+                   help="parallel shard workers (each loads its own Sidon; fills spare VRAM)")
+    p.add_argument("--worker-id", type=int, default=None,
+                   help="this worker's index in 0..workers-1 (set automatically when --workers > 1)")
 
 
 def encode_flac(wav: np.ndarray, sr: int) -> bytes:
@@ -113,17 +117,62 @@ def restore_shard(src: str, dst: Path, sidon: Sidon, sample_rate: int, limit: in
     return len(rows)
 
 
-def run(args) -> None:
+def _run_worker(args) -> None:
     files = sorted(glob.glob(args.parquet_glob))
     if not files:
         raise SystemExit(f"no files match {args.parquet_glob}")
+    wid, n_workers = args.worker_id, args.workers
+    if n_workers > 1:
+        files = [f for i, f in enumerate(files) if i % n_workers == wid]
+    tag = f"w{wid}/{n_workers}" if n_workers > 1 else "w0"
     out = Path(args.out)
     sidon = Sidon(args.device)
     for f in files:
         dst = out / Path(f).name
         if dst.exists():  # resumable: a shard is written whole or not at all
-            print(f"{dst.name}: done before", flush=True)
+            print(f"[{tag}] {dst.name}: done before", flush=True)
             continue
         t0 = time.time()
         n = restore_shard(f, dst, sidon, args.sample_rate, args.limit)
-        print(f"{dst.name}: {n} clips restored in {time.time() - t0:.0f} s", flush=True)
+        print(f"[{tag}] {dst.name}: {n} clips restored in {time.time() - t0:.0f} s", flush=True)
+
+
+def run(args) -> None:
+    import os
+    import subprocess
+    import sys
+
+    if args.workers < 1:
+        raise SystemExit("--workers must be >= 1")
+    if args.workers == 1:
+        if args.worker_id is None:
+            args.worker_id = 0
+        _run_worker(args)
+        return
+    if args.worker_id is not None:
+        _run_worker(args)
+        return
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    procs, logs = [], []
+    for wid in range(args.workers):
+        cmd = [
+            sys.executable, "-m", "drifting_tts.cli", "restore-audio",
+            "--parquet-glob", args.parquet_glob, "--out", str(out),
+            "--sample-rate", str(args.sample_rate), "--limit", str(args.limit),
+            "--device", args.device, "--workers", str(args.workers), "--worker-id", str(wid),
+        ]
+        env = os.environ.copy()
+        env["CUDA_MODULE_LOADING"] = env.get("CUDA_MODULE_LOADING", "LAZY")
+        lf = (out / f"worker_{wid}.log").open("w", encoding="utf-8")
+        logs.append(lf)
+        print(f"spawn worker {wid}/{args.workers} -> {lf.name}", flush=True)
+        procs.append(subprocess.Popen(cmd, env=env, stdout=lf, stderr=subprocess.STDOUT))
+        time.sleep(5)  # stagger CUDA init so three Sidons do not allocate at once
+    codes = [p.wait() for p in procs]
+    for lf in logs:
+        lf.close()
+    if any(c != 0 for c in codes):
+        raise SystemExit(f"worker exit codes: {codes}")
+    print(f"all {args.workers} workers finished", flush=True)

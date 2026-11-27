@@ -50,6 +50,12 @@ def test_normalize_is_idempotent(raw):
     assert text_sv.normalize(norm) == norm
 
 
+def test_normalize_survives_a_thousands_block_after_a_decimal():
+    """RixVox speaker transcripts carry "11,5 926": the space used to raise ValueError inside _number_words."""
+    assert text_sv.normalize("11,5 926") == "elva komma fem nio två sex"
+    assert text_sv.normalize("0,5 700") == "noll komma fem sju noll noll"
+
+
 @pytest.mark.parametrize(
     "raw, sentences",
     [

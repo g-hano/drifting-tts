@@ -562,6 +562,10 @@ def _number_words(raw: str, year: bool = True) -> str:
     if "," in raw:
         whole, frac = raw.split(",", 1)
         whole = _strip_thousands(whole)
+        # A space-grouped block can follow a decimal when the source lost its separator ("11,5 926", an actual
+        # RixVox transcript): read the digits instead of raising on the space.
+        whole = "".join(c for c in whole if c.isdigit())
+        frac = "".join(c for c in frac if c.isdigit())
         whole_words = number_to_words(int(whole)) if whole else "noll"
         return f"{whole_words} komma " + " ".join(_ONES[int(d)] for d in frac)
     compact = _strip_thousands(raw)

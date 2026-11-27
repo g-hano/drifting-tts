@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -90,7 +91,7 @@ def edit_distance(a, b) -> int:
 def dataset_language(root: Path) -> str:
     """The text language of a prepared dataset (``stats.json``, ``prepare --language``; Turkish if not recorded)."""
     stats = Path(root) / "stats.json"
-    return json.loads(stats.read_text()).get("language", "tr") if stats.exists() else "tr"
+    return json.loads(stats.read_text(encoding="utf-8")).get("language", "tr") if stats.exists() else "tr"
 
 
 def error_rates(ref: str, hyp: str, language: str = "tr") -> tuple[float, float]:
@@ -254,6 +255,35 @@ class AsrScorer:
         return out
 
 
+def _onnx2torch(path: Path, device: str):
+    """``onnx2torch.convert`` with a Windows-safe shape-inference step.
+
+    ``onnx2torch`` infers shapes into a ``NamedTemporaryFile`` that it keeps open and then reopens that same
+    path with ``onnx.load``; Windows refuses the second open, so every ``score`` run died with
+    ``PermissionError: [Errno 13]`` before scoring a single utterance. Write the inferred model into a closed
+    temporary directory instead (same result, no shared handle).
+    """
+    import onnx
+    import onnx2torch
+    from onnx2torch import converter
+
+    original = converter.safe_shape_inference
+
+    def safe_shape_inference(model_or_path, **kwargs):
+        if not isinstance(model_or_path, (str, Path)):
+            return original(model_or_path, **kwargs)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out = Path(tmp_dir) / "shapes.onnx"
+            onnx.shape_inference.infer_shapes_path(str(model_or_path), output_path=str(out), **kwargs)
+            return onnx.load(str(out))
+
+    converter.safe_shape_inference = safe_shape_inference
+    try:
+        return onnx2torch.convert(str(path)).to(device).eval()
+    finally:
+        converter.safe_shape_inference = original
+
+
 class DnsMos:
     """DNSMOS P.835 (``sig_bak_ovr.onnx``) and P.808 (``model_v8.onnx``), batched over all 9.01 s windows.
     Matches Microsoft's ``dnsmos_local.py`` (non-personalised polynomial fit, P.808 on librosa log-mels)."""
@@ -267,14 +297,13 @@ class DnsMos:
         import warnings
 
         import librosa
-        import onnx2torch
         import speechmos
 
         models = Path(speechmos.__file__).parent / "dnsmos_models"
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            self.primary = onnx2torch.convert(str(models / "sig_bak_ovr.onnx")).to(device).eval()
-            self.p808 = onnx2torch.convert(str(models / "model_v8.onnx")).to(device).eval()
+            self.primary = _onnx2torch(models / "sig_bak_ovr.onnx", device)
+            self.p808 = _onnx2torch(models / "model_v8.onnx", device)
         self.fb = torch.from_numpy(librosa.filters.mel(sr=SR16, n_fft=321, n_mels=120)).to(device)
         self.window = torch.hann_window(321, device=device)
         self.device, self.chunk = device, chunk
@@ -401,14 +430,14 @@ class _Clips(Dataset):
 
 
 def read_index(root: Path) -> list[dict]:
-    with open(root / "index.jsonl") as f:
+    with open(root / "index.jsonl", encoding="utf-8") as f:
         return [json.loads(line) for line in f]
 
 
 def write_scores(root: Path, scores: dict[int, dict]) -> None:
     """Rewrite ``scores.jsonl`` atomically with one line per utterance."""
     tmp = root / "scores.jsonl.tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         for i in sorted(scores):
             f.write(json.dumps({"i": i, **scores[i]}, ensure_ascii=False) + "\n")
     os.replace(tmp, root / "scores.jsonl")
@@ -422,7 +451,7 @@ def score(root: Path, names: list[str], args) -> None:
     audio_names = [n for n in names if n != "rate"]
     if audio_names and not (root / "audio.bin").exists():
         raise FileNotFoundError(f"{root / 'audio.bin'} missing: run `drifting-tts prepare --save-audio`")
-    with open(root / "scores.jsonl", "a") as out:
+    with open(root / "scores.jsonl", "a", encoding="utf-8") as out:
         def emit(records):
             for i, rec in records:
                 out.write(json.dumps({"i": i, **rec}, ensure_ascii=False) + "\n")
@@ -561,7 +590,7 @@ def summarize(root: Path, filters: dict, min_quality: float, max_frames: int, ts
     for r in sorted(table, key=lambda r: r["kept"] - r["utts"])[:10]:
         print(fmt(r))
     if tsv:
-        with open(tsv, "w") as f:
+        with open(tsv, "w", encoding="utf-8") as f:
             f.write("\t".join(table[0]) + "\n")
             for r in table:
                 f.write("\t".join(str(round(v, 4) if isinstance(v, float) else v) for v in r.values()) + "\n")

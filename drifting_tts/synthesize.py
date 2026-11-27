@@ -295,7 +295,7 @@ class Synthesizer:
             acoustic_context = AR_CONTEXT_FRAMES if self.ar else 0
         self.acoustic_context = int(acoustic_context)
         spk_file = Path(self.cfg.data.root) / "speakers.json"
-        self.speakers = json.loads(spk_file.read_text()) if spk_file.exists() else {}
+        self.speakers = json.loads(spk_file.read_text(encoding="utf-8")) if spk_file.exists() else {}
         self.acoustic, self.vocoder_graphs, self.prosody = None, None, None
         # ARDrift, set after construction: what the null branch of `cfg_scale` is without ("text", "voice": the
         # speaker row and the reference's tokens, or "both"; #99), and Gaussian noise on the model's own history (#101)

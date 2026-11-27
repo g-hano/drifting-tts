@@ -23,7 +23,7 @@ def load_scores(root: str | Path) -> dict[int, dict]:
     path = Path(root) / "scores.jsonl"
     out: dict[int, dict] = {}
     if path.exists():
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 try:
                     r = json.loads(line)
@@ -85,7 +85,7 @@ class MelStats:
 
     @classmethod
     def load(cls, root: str | Path) -> MelStats:
-        s = json.loads((Path(root) / "stats.json").read_text())
+        s = json.loads((Path(root) / "stats.json").read_text(encoding="utf-8"))
         return cls(s["mean"], s["std"], active=s.get("active"))
 
     @classmethod
@@ -161,7 +161,7 @@ class MelDataset(Dataset):
     ):
         root = Path(root)
         self.stats = MelStats.load(root)
-        st = json.loads((root / "stats.json").read_text())
+        st = json.loads((root / "stats.json").read_text(encoding="utf-8"))
         self.backend = st.get("backend", "vocos")
         self.language = st.get("language", "tr")  # the text frontend of norm_text (prepare --language)
         # features per frame and frames per second: 100 log-mel bins at 93.75 Hz, or VAE latents (extract-latents)
@@ -190,7 +190,7 @@ class MelDataset(Dataset):
         drop = bool(rules and scores) and (split == "train" or bool(filters.get("apply_to_val")))
         self.items = []
         failed = 0
-        with open(root / "index.jsonl") as f:
+        with open(root / "index.jsonl", encoding="utf-8") as f:
             for n, line in enumerate(f):
                 e = json.loads(line)
                 n_tokens = 2 * len(e["norm_text"]) + 1
@@ -208,7 +208,7 @@ class MelDataset(Dataset):
             total = len(self.items) + failed * drop
             print(f"data.filters ({split}): {failed}/{total} utterances fail; "
                   + (f"kept {len(self.items)} ({hours:.1f} h)" if drop else "not filtered (apply_to_val: false)"))
-        self.num_speakers = len(json.loads((root / "speakers.json").read_text()))
+        self.num_speakers = len(json.loads((root / "speakers.json").read_text(encoding="utf-8")))
         # reference (#96): every item also holds "ref", a crop of another utterance of its speaker (None: the
         # speaker has no other utterance that is long enough)
         self.reference, self.by_speaker = reference, {}
